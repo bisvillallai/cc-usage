@@ -4,6 +4,11 @@ input=$(cat)
 # Persist state for the Claude Code menu bar widget
 echo "$input" > ~/.claude/.menubar-state.json
 
+# Silent mode: if this flag file exists, only feed the menu bar (no terminal status line)
+if [ -f ~/.claude/.cc-usage-silent ]; then
+  exit 0
+fi
+
 cwd=$(echo "$input" | jq -r '.workspace.current_dir // .cwd // ""')
 model=$(echo "$input" | jq -r '.model.display_name // ""')
 used=$(echo "$input" | jq -r '.context_window.used_percentage // empty')
