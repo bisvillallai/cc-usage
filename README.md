@@ -36,6 +36,30 @@ CC 68%
 
 ## Installation
 
+### Quick install (recommended)
+
+From the repo root:
+
+```bash
+./install.sh            # menu bar + terminal status line
+./install.sh --silent   # menu bar only (no terminal status line)
+```
+
+It installs any missing dependencies (SwiftBar, Python, jq), copies the plugin
+and hook into place, rewrites the Python shebang for your Mac (Apple Silicon /
+Intel), merges the `statusLine` key into `~/.claude/settings.json`, and launches
+SwiftBar. **Re-run it after every `git pull`** to update. Open a *new* Claude
+Code session to see the terminal status line.
+
+Toggle silent mode later without re-running:
+
+```bash
+touch ~/.claude/.cc-usage-silent   # menu bar only
+rm    ~/.claude/.cc-usage-silent   # show terminal status line again
+```
+
+### Manual install (alternative)
+
 ### 1. Configure SwiftBar
 
 Open SwiftBar, choose a plugins directory (e.g. `~/.swiftbar`).
@@ -92,5 +116,9 @@ No network calls. No tokens stored. All data stays local.
 
 | File | Purpose |
 |------|---------|
+| `install.sh` | One-command installer / updater (`--silent` for menu-bar-only) |
 | `cc-usage.5s.py` | SwiftBar plugin (refreshes every 5 s) |
 | `statusline-command.sh` | Claude Code hook — persists state + formats terminal status line |
+
+> **Silent mode:** create `~/.claude/.cc-usage-silent` to feed the menu bar only
+> and suppress the terminal status line (per-machine, not versioned).
