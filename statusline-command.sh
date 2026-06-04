@@ -39,4 +39,4 @@ else
 fi
 model_part="\033[38;5;180m${model}\033[0m"
 
-printf "${dir_part}${vcs_part}  ${model_part}\033[38;5;223m${ctx_part}${rate_part}\033[0m"
+printf '%b' "${dir_part}${vcs_part}  ${model_part}\033[38;5;223m${ctx_part}${rate_part}\033[0m"
