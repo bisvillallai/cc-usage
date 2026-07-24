@@ -74,6 +74,17 @@ open -a SwiftBar 2>/dev/null || true
 sleep 1
 open "swiftbar://refreshallplugins" 2>/dev/null || true
 
+echo "==> Registering SwiftBar as a login item"
+# SwiftBar's internal launch-at-login preference does not survive machine
+# migrations; an explicit login item does.
+if osascript -e 'tell application "System Events" to get the name of every login item' 2>/dev/null | grep -q "SwiftBar"; then
+  say "SwiftBar already in Login Items"
+elif osascript -e 'tell application "System Events" to make login item at end with properties {path:"/Applications/SwiftBar.app", hidden:false}' >/dev/null 2>&1; then
+  say "SwiftBar added to Login Items"
+else
+  say "Could not register login item — add SwiftBar manually in System Settings > General > Login Items"
+fi
+
 echo
 echo "Done. Look for 'CC %' in the macOS menu bar."
 echo "Terminal status line appears in NEW Claude Code sessions."
