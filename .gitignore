@@ -1,0 +1,4 @@
+
+# Estado de trabajo de Claude Code (efímero, no versionar): los snapshots de
+# compactación pueden llevar secretos pegados o generados durante la sesión.
+.claude/state/
