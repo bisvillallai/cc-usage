@@ -9,14 +9,16 @@ CC 68%
 
 **On click:**
 ```
-◕ 5h  68% ↺1h12m   ·   ◑ Week  41%
+◕ 5h  68% ↺1h12m   ·   ◑ Week  41% ▲5%
 📋 Claude Max   ·   ◔ Ctx  30%
 ```
 
 - **5h** — current 5-hour rate limit usage, with countdown to reset
-- **Week** — 7-day usage across all models
-- **Ctx** — context window usage for the active session
-- Color: green < 70% · orange 70–89% · red ≥ 90%
+- **Week** — 7-day usage across all models, plus pace vs. the weekly reset:
+  `▲5%` = 5 points above a linear pace, `▼5%` = 5 points in your favor
+- **Ctx** — context window usage for the active session (`—` when no session is active)
+- Usage is account-wide (CLI, Desktop, web, Design) and refreshes every 30 s
+- Color: green < 70% · orange 70–89% · red ≥ 90% — each limit colored on its own
 - Circle indicator: ○ ◔ ◑ ◕ ● fills as usage climbs
 
 ---
@@ -102,13 +104,19 @@ The plugin shows `CC —` until you start a Claude Code session. Stats appear on
 
 ## How it works
 
-Claude Code calls the `statusLine` command after every interaction, piping a JSON payload with session state (model, rate limits, context window, etc.).
+Every 30 s `cc-usage.5s.py` asks Anthropic's usage endpoint (the one behind
+`/usage`) for the account-wide 5-hour and weekly limits, authenticating with the
+Claude Code OAuth token it reads from the macOS Keychain on the fly. The token
+is never written to disk; only the percentages are cached in
+`~/.claude/.cc-usage-api.json`. macOS may ask once for Keychain access.
 
+Claude Code also calls the `statusLine` command after every interaction;
 `statusline-command.sh` persists that payload to `~/.claude/.menubar-state.json`.
+It supplies the context window and serves as a fallback when the endpoint fails.
 
-`cc-usage.5s.py` reads that file every 5 seconds and formats it for SwiftBar.
-
-No network calls. No tokens stored. All data stays local.
+> The endpoint is undocumented and may change. If the Keychain token expires
+> (no Claude Code use for a while), the menu shows the last known values with a
+> "datos de hace…" warning until Claude Code refreshes the token.
 
 ---
 

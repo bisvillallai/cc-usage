@@ -2,7 +2,7 @@
 # Intel Mac: change shebang to #!/usr/local/bin/python3
 # -*- coding: utf-8 -*-
 # <swiftbar.title>Claude Code Usage</swiftbar.title>
-# <swiftbar.version>1.2.0</swiftbar.version>
+# <swiftbar.version>1.3.0</swiftbar.version>
 # <swiftbar.author>bisvillallai</swiftbar.author>
 # <swiftbar.desc>Muestra el uso de Claude Code (5h, weekly, context window)</swiftbar.desc>
 # <swiftbar.hideAbout>true</swiftbar.hideAbout>
@@ -13,9 +13,17 @@
 
 import json
 import os
+import subprocess
+import urllib.request
 from datetime import datetime
 
 STATE_FILE = os.path.expanduser("~/.claude/.menubar-state.json")
+# Solo porcentajes y timestamps; el token OAuth nunca se escribe a disco.
+CACHE_FILE = os.path.expanduser("~/.claude/.cc-usage-api.json")
+USAGE_URL  = "https://api.anthropic.com/api/oauth/usage"
+API_EVERY  = 30        # segundos entre consultas al endpoint
+STALE_SECS = 300       # a partir de aquí se avisa que el dato es viejo
+WEEK_SECS  = 7 * 86400
 
 GREEN  = "#30D158"
 ORANGE = "#FF9F0A"
@@ -24,17 +32,16 @@ GRAY   = "#8E8E93"
 WHITE  = "#F2F2F7"
 DIM    = "#AEAEB2"
 
+# SwiftBar solo interpreta ANSI de 256 colores (38;5;n), no truecolor.
+ANSI = {GREEN: 77, ORANGE: 214, RED: 203, GRAY: 245, DIM: 250}
+
+def ansi(text, color):
+    return f"\033[38;5;{ANSI[color]}m{text}\033[0m"
+
 def color_for(pct):
     if pct is None: return GRAY
     if pct >= 90:   return RED
     if pct >= 70:   return ORANGE
-    return GREEN
-
-def worst_color(*pcts):
-    valid = [p for p in pcts if p is not None]
-    if not valid:                       return GRAY
-    if any(p >= 90 for p in valid):    return RED
-    if any(p >= 70 for p in valid):    return ORANGE
     return GREEN
 
 # ○ ◔ ◑ ◕ ●  — círculo vacío → lleno conforme sube el uso
@@ -61,39 +68,100 @@ def reset_str(ts):
         return f"↺{mins // 60}h{mins % 60:02d}m"
     return f"↺{mins}m"
 
-# ── Leer state file ──────────────────────────────────────────────────────────
-state       = {}
-last_update = None
-is_active   = False
-
-if os.path.exists(STATE_FILE):
+def iso_ts(v):
     try:
-        mtime       = os.path.getmtime(STATE_FILE)
-        last_update = datetime.fromtimestamp(mtime)
-        is_active   = (datetime.now() - last_update).total_seconds() < 90
-        with open(STATE_FILE) as f:
-            state = json.load(f)
+        return datetime.fromisoformat(v).timestamp()
+    except (TypeError, ValueError):
+        return None
+
+def load_json(path):
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+def write_json(path, data):
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(data, f)
+    os.replace(tmp, path)
+
+def fetch_usage():
+    """Uso de toda la cuenta (CLI, Desktop, web, Design) vía el endpoint de /usage."""
+    raw = subprocess.run(
+        ["security", "find-generic-password", "-a", os.environ.get("USER", ""),
+         "-s", "Claude Code-credentials", "-w"],
+        capture_output=True, text=True, timeout=5,
+    ).stdout
+    token = json.loads(raw)["claudeAiOauth"]["accessToken"]
+    req = urllib.request.Request(USAGE_URL, headers={
+        "Authorization": f"Bearer {token}",
+        "anthropic-beta": "oauth-2025-04-20",
+    })
+    data = json.load(urllib.request.urlopen(req, timeout=5))
+    return {
+        "five_pct":   data["five_hour"]["utilization"],
+        "five_reset": iso_ts(data["five_hour"]["resets_at"]),
+        "week_pct":   data["seven_day"]["utilization"],
+        "week_reset": iso_ts(data["seven_day"]["resets_at"]),
+    }
+
+now = datetime.now().timestamp()
+
+# ── Fuente 1: endpoint de uso (cacheado, máx. una consulta cada API_EVERY s) ─
+cache = load_json(CACHE_FILE)
+if now - cache.get("attempted_at", 0) >= API_EVERY:
+    cache["attempted_at"] = now
+    try:
+        cache.update(fetch_usage(), fetched_at=now, error=None)
+    except Exception as e:
+        cache["error"] = type(e).__name__
+    try:
+        write_json(CACHE_FILE, cache)
     except Exception:
         pass
 
-five_pct    = None
-five_reset  = None   # Unix timestamp
-week_pct    = None
-ctx_pct     = None
-plan_name   = "Claude Max"
+# ── Fuente 2: status line de Claude Code (fallback + contexto de la sesión) ─
+state = load_json(STATE_FILE)
+state_mtime = os.path.getmtime(STATE_FILE) if os.path.exists(STATE_FILE) else 0
+rl = state.get("rate_limits") or {}
+line_usage = {}
+if rl.get("five_hour") or rl.get("seven_day"):
+    line_usage = {
+        "five_pct":   (rl.get("five_hour") or {}).get("used_percentage"),
+        "five_reset": (rl.get("five_hour") or {}).get("resets_at"),
+        "week_pct":   (rl.get("seven_day") or {}).get("used_percentage"),
+        "week_reset": (rl.get("seven_day") or {}).get("resets_at"),
+        "fetched_at": state_mtime,
+    }
 
-try: five_pct   = state["rate_limits"]["five_hour"]["used_percentage"]
-except (KeyError, TypeError): pass
+# El endpoint manda mientras responda: el status line de una sesión inactiva
+# puede reescribirse con rate_limits viejos. Si el endpoint falla, gana el
+# dato más reciente de los dos (ambos son uso de la cuenta completa).
+if now - cache.get("fetched_at", 0) < STALE_SECS:
+    usage = cache
+else:
+    sources = [u for u in (cache, line_usage) if u.get("fetched_at")]
+    usage = max(sources, key=lambda u: u["fetched_at"]) if sources else {}
 
-try: five_reset = state["rate_limits"]["five_hour"]["resets_at"]
-except (KeyError, TypeError): pass
+five_pct   = usage.get("five_pct")
+five_reset = usage.get("five_reset")
+week_pct   = usage.get("week_pct")
+week_reset = usage.get("week_reset")
+data_age   = now - usage["fetched_at"] if usage else None
 
-try: week_pct = state["rate_limits"]["seven_day"]["used_percentage"]
-except (KeyError, TypeError): pass
+# Si la ventana ya se reinició desde el último dato, el uso real es 0.
+if five_reset and five_reset <= now: five_pct, five_reset = 0, None
+if week_reset and week_reset <= now: week_pct, week_reset = 0, None
 
-try: ctx_pct = state["context_window"]["used_percentage"]
-except (KeyError, TypeError): pass
+# Contexto: es por conversación, solo tiene sentido si hay una sesión activa.
+ctx_pct = None
+if now - state_mtime < 90:
+    try: ctx_pct = state["context_window"]["used_percentage"]
+    except (KeyError, TypeError): pass
 
+plan_name = "Claude Max"
 for path in [["plan","name"],["subscription","plan"],["rate_limits","plan"],["billing","plan_name"]]:
     try:
         v = state
@@ -104,6 +172,20 @@ for path in [["plan","name"],["subscription","plan"],["rate_limits","plan"],["bi
     except (KeyError, TypeError):
         pass
 
+def pace_str(pct, reset):
+    """▲n% si vas por encima del ritmo lineal de la semana, ▼n% si vas a favor."""
+    if pct is None or reset is None:
+        return ""
+    elapsed = min(max((now - (reset - WEEK_SECS)) / WEEK_SECS, 0), 1)
+    diff = round(pct - elapsed * 100)
+    if diff > 0:  return ansi(f"▲{diff}%", ORANGE)
+    if diff < 0:  return ansi(f"▼{-diff}%", GREEN)
+    return ansi("=", DIM)
+
+def age_str(secs):
+    mins = int(secs // 60)
+    return f"{mins // 60}h{mins % 60:02d}m" if mins >= 60 else f"{mins}m"
+
 # ── Barra de menú: CC + 5h ──────────────────────────────────────────────────
 if five_pct is not None:
     print(f"CC {round(five_pct)}% | color={color_for(five_pct)} font=Menlo-Bold size=12")
@@ -112,17 +194,20 @@ else:
 
 print("---")
 
-# ── Línea 1: 5h  ·  Weekly ──────────────────────────────────────────────────
-c1  = circle(five_pct)
-c2  = circle(week_pct)
-p1  = pct_str(five_pct)
-p2  = pct_str(week_pct)
-r1  = reset_str(five_reset)
-col1 = worst_color(five_pct, week_pct)
-five_col = f" {r1}" if r1 else ""
-print(f"{c1} 5h {p1}{five_col}   ·   {c2} Week {p2} | font=Menlo size=12 color={col1}")
+# ── Línea 1: 5h  ·  Weekly (cada tramo con su propio color) ─────────────────
+r1   = reset_str(five_reset)
+five = ansi(f"{circle(five_pct)} 5h {pct_str(five_pct)}" + (f" {r1}" if r1 else ""), color_for(five_pct))
+week = ansi(f"{circle(week_pct)} Week {pct_str(week_pct)}", color_for(week_pct))
+pace = pace_str(week_pct, week_reset)
+sep  = ansi("   ·   ", DIM)
+print(f"{five}{sep}{week}" + (f" {pace}" if pace else "") + " | font=Menlo size=12 ansi=true")
 
 # ── Línea 2: Plan  ·  Context ────────────────────────────────────────────────
 c3 = circle(ctx_pct)
 p3 = pct_str(ctx_pct)
 print(f"📋 {plan_name}   ·   {c3} Ctx {p3} | font=Menlo size=11 color={DIM}")
+
+# ── Aviso si el dato es viejo (p. ej. token expirado sin usar Claude Code) ──
+if data_age is not None and data_age > STALE_SECS:
+    hint = " · abre Claude Code para renovar sesión" if cache.get("error") else ""
+    print(f"⚠ datos de hace {age_str(data_age)}{hint} | font=Menlo size=11 color={ORANGE}")
