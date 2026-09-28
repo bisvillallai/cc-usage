@@ -2,7 +2,7 @@
 # Intel Mac: change shebang to #!/usr/local/bin/python3
 # -*- coding: utf-8 -*-
 # <swiftbar.title>Claude Code Usage</swiftbar.title>
-# <swiftbar.version>1.3.0</swiftbar.version>
+# <swiftbar.version>1.4.0</swiftbar.version>
 # <swiftbar.author>bisvillallai</swiftbar.author>
 # <swiftbar.desc>Muestra el uso de Claude Code (5h, weekly, context window)</swiftbar.desc>
 # <swiftbar.hideAbout>true</swiftbar.hideAbout>
@@ -24,6 +24,9 @@ USAGE_URL  = "https://api.anthropic.com/api/oauth/usage"
 API_EVERY  = 30        # segundos entre consultas al endpoint
 STALE_SECS = 300       # a partir de aquí se avisa que el dato es viejo
 WEEK_SECS  = 7 * 86400
+
+# Destello de Claude, PNG 32 px a 144 dpi (16 pt en la barra).
+CLAUDE_LOGO = "iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAABYlAAAWJQFJUiTwAAABuklEQVR42t2XzY2EMAyFp4SUQAmUQAnc9koJ3PaaDiiBElJCSuC8J0pICeyO5EjWm+dk+dlB2kOkARL7i/2ceB5fnx+PE6OVcdjGGef+Z2wy/B0AUQHEfw8wSJibOwBG5Wj9hQacrBmuAtCONmXYAgjq/XQFwLPMkjK6qLQgVAewsRYV/fDM7yy7cUQD2nAHzjqiiwzWCjQtWe1kVZMSoZ3V90AAcPeT2EhGVF4AcGKe3Kow6p206reD3QcAZhp6ARiMBXk3DvQwQwR09BZiY4YypiJ0AhKJgZyWgbxfCvDUca0K8iXjQRs5LSWHGSofXJ1UwCQwrgYwg6FoRKTkPBQgQw1g++MRawDrSeN6JBKdvgbgJH9eBJdzOBulusFdMVx1GTWGCFejxtMREOvqjRVlp8L3XREpNRmY2wbmJDI/kMurCFKrABTNCKcjA+7J0axBiiKcyPGrNZHgLogk/0mt80ZEm5IGrFY7kp4gqWfrsOlJStq9PeEIBkZIWYJOaINNNApyOtKURiOEmHsL4HRX7OF2Y6LtZF7ccxjtaaF7YthsNN7xxwQB/N0A4x0A+dgOpJN+C8Dp8Q3PRhq0LhWbfwAAAABJRU5ErkJggg=="
 
 GREEN  = "#30D158"
 ORANGE = "#FF9F0A"
@@ -54,7 +57,7 @@ def circle(pct):
     return "○"
 
 def pct_str(v):
-    return f"{round(v):>3}%" if v is not None else "  —%"
+    return f"{round(v)}%" if v is not None else "—%"
 
 def reset_str(ts):
     """Tiempo restante hasta ts: '1h40m' si ≥1h, '40m' si <1h, '' si ya pasó."""
@@ -94,7 +97,8 @@ def fetch_usage():
          "-s", "Claude Code-credentials", "-w"],
         capture_output=True, text=True, timeout=5,
     ).stdout
-    token = json.loads(raw)["claudeAiOauth"]["accessToken"]
+    oauth = json.loads(raw)["claudeAiOauth"]
+    token = oauth["accessToken"]
     req = urllib.request.Request(USAGE_URL, headers={
         "Authorization": f"Bearer {token}",
         "anthropic-beta": "oauth-2025-04-20",
@@ -105,6 +109,7 @@ def fetch_usage():
         "five_reset": iso_ts(data["five_hour"]["resets_at"]),
         "week_pct":   data["seven_day"]["utilization"],
         "week_reset": iso_ts(data["seven_day"]["resets_at"]),
+        "plan":       oauth.get("subscriptionType"),
     }
 
 now = datetime.now().timestamp()
@@ -161,16 +166,8 @@ if now - state_mtime < 90:
     try: ctx_pct = state["context_window"]["used_percentage"]
     except (KeyError, TypeError): pass
 
-plan_name = "Claude Max"
-for path in [["plan","name"],["subscription","plan"],["rate_limits","plan"],["billing","plan_name"]]:
-    try:
-        v = state
-        for k in path: v = v[k]
-        if isinstance(v, str) and v:
-            plan_name = v
-            break
-    except (KeyError, TypeError):
-        pass
+# Plan de la cuenta ("pro", "max", …) según las credenciales de Claude Code.
+plan_name = (cache.get("plan") or "").capitalize() or "—"
 
 def pace_str(pct, reset):
     """▲n% si vas por encima del ritmo lineal de la semana, ▼n% si vas a favor."""
@@ -197,15 +194,13 @@ print("---")
 # ── Línea 1: 5h  ·  Weekly (cada tramo con su propio color) ─────────────────
 r1   = reset_str(five_reset)
 five = ansi(f"{circle(five_pct)} 5h {pct_str(five_pct)}" + (f" {r1}" if r1 else ""), color_for(five_pct))
-week = ansi(f"{circle(week_pct)} Week {pct_str(week_pct)}", color_for(week_pct))
+week = ansi(f"{circle(week_pct)} W {pct_str(week_pct)}", color_for(week_pct))
 pace = pace_str(week_pct, week_reset)
-sep  = ansi("   ·   ", DIM)
+sep  = ansi(" · ", DIM)
 print(f"{five}{sep}{week}" + (f" {pace}" if pace else "") + " | font=Menlo size=12 ansi=true")
 
 # ── Línea 2: Plan  ·  Context ────────────────────────────────────────────────
-c3 = circle(ctx_pct)
-p3 = pct_str(ctx_pct)
-print(f"📋 {plan_name}   ·   {c3} Ctx {p3} | font=Menlo size=11 color={DIM}")
+print(f"{plan_name} · {circle(ctx_pct)} Ctx {pct_str(ctx_pct)} | font=Menlo size=11 color={DIM} image={CLAUDE_LOGO}")
 
 # ── Aviso si el dato es viejo (p. ej. token expirado sin usar Claude Code) ──
 if data_age is not None and data_age > STALE_SECS:

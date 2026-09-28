@@ -9,13 +9,14 @@ CC 68%
 
 **On click:**
 ```
-◕ 5h  68% ↺1h12m   ·   ◑ Week  41% ▲5%
-📋 Claude Max   ·   ◔ Ctx  30%
+◕ 5h 68% ↺1h12m · ◑ W 41% ▲5%
+✳ Max · ◔ Ctx 30%
 ```
 
 - **5h** — current 5-hour rate limit usage, with countdown to reset
-- **Week** — 7-day usage across all models, plus pace vs. the weekly reset:
+- **W** — 7-day (weekly) usage across all models, plus pace vs. the weekly reset:
   `▲5%` = 5 points above a linear pace, `▼5%` = 5 points in your favor
+- **✳ Max / Pro** — Claude logo + your plan, read from the Claude Code credentials
 - **Ctx** — context window usage for the active session (`—` when no session is active)
 - Usage is account-wide (CLI, Desktop, web, Design) and refreshes every 30 s
 - Color: green < 70% · orange 70–89% · red ≥ 90% — each limit colored on its own
