@@ -26,6 +26,7 @@ STALE_SECS = 300       # a partir de aquí se avisa que el dato es viejo
 WEEK_SECS  = 7 * 86400
 
 # Destello de Claude, PNG 32 px a 144 dpi (16 pt en la barra).
+LOGO_PT = 14.45   # 2 × avance de Menlo 12 (7.2246 pt)
 CLAUDE_LOGO = "iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAABYlAAAWJQFJUiTwAAABuklEQVR42t2XzY2EMAyFp4SUQAmUQAnc9koJ3PaaDiiBElJCSuC8J0pICeyO5EjWm+dk+dlB2kOkARL7i/2ceB5fnx+PE6OVcdjGGef+Z2wy/B0AUQHEfw8wSJibOwBG5Wj9hQacrBmuAtCONmXYAgjq/XQFwLPMkjK6qLQgVAewsRYV/fDM7yy7cUQD2nAHzjqiiwzWCjQtWe1kVZMSoZ3V90AAcPeT2EhGVF4AcGKe3Kow6p206reD3QcAZhp6ARiMBXk3DvQwQwR09BZiY4YypiJ0AhKJgZyWgbxfCvDUca0K8iXjQRs5LSWHGSofXJ1UwCQwrgYwg6FoRKTkPBQgQw1g++MRawDrSeN6JBKdvgbgJH9eBJdzOBulusFdMVx1GTWGCFejxtMREOvqjRVlp8L3XREpNRmY2wbmJDI/kMurCFKrABTNCKcjA+7J0axBiiKcyPGrNZHgLogk/0mt80ZEm5IGrFY7kp4gqWfrsOlJStq9PeEIBkZIWYJOaINNNApyOtKURiOEmHsL4HRX7OF2Y6LtZF7ccxjtaaF7YthsNN7xxwQB/N0A4x0A+dgOpJN+C8Dp8Q3PRhq0LhWbfwAAAABJRU5ErkJggg=="
 
 GREEN  = "#30D158"
@@ -192,15 +193,22 @@ else:
 print("---")
 
 # ── Línea 1: 5h  ·  Weekly (cada tramo con su propio color) ─────────────────
-r1   = reset_str(five_reset)
-five = ansi(f"{circle(five_pct)} 5h {pct_str(five_pct)}" + (f" {r1}" if r1 else ""), color_for(five_pct))
+r1        = reset_str(five_reset)
+five_text = f"{circle(five_pct)} 5h {pct_str(five_pct)}" + (f" {r1}" if r1 else "")
+five = ansi(five_text, color_for(five_pct))
 week = ansi(f"{circle(week_pct)} W {pct_str(week_pct)}", color_for(week_pct))
 pace = pace_str(week_pct, week_reset)
 sep  = ansi(" · ", DIM)
 print(f"{five}{sep}{week}" + (f" {pace}" if pace else "") + " | font=Menlo size=12 ansi=true")
 
 # ── Línea 2: Plan  ·  Context ────────────────────────────────────────────────
-print(f"{plan_name} · {circle(ctx_pct)} Ctx {pct_str(ctx_pct)} | font=Menlo size=11 color={DIM} image={CLAUDE_LOGO}")
+# Sin color=: en SwiftBar 2.1.1 (macOS 26+) el hover reescribe las líneas con
+# color= y se come la imagen incrustada; el gris va por ANSI, que no se toca.
+# Logo a 2 celdas de Menlo 12 + los 2 espacios que SwiftBar le pone = 4 celdas;
+# se rellena el plan para que el "·" caiga en la misma columna que arriba.
+plan_col = plan_name.ljust(len(five_text) - 4)
+plan_ctx = ansi(f"{plan_col} · {circle(ctx_pct)} Ctx {pct_str(ctx_pct)}", DIM)
+print(f"{plan_ctx} | font=Menlo size=12 ansi=true image={CLAUDE_LOGO} width={LOGO_PT} height={LOGO_PT}")
 
 # ── Aviso si el dato es viejo (p. ej. token expirado sin usar Claude Code) ──
 if data_age is not None and data_age > STALE_SECS:
